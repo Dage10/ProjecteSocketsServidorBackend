@@ -22,12 +22,55 @@ const videos = [
 ];
 
 io.on('connection', (socket) => {
-    console.log('Nuevo cliente conectado', socket.id);
+    console.log('Client connectat:', socket.id);
 
+    // Registrar plataforma
+    socket.on('registerPlatform', (platform) => {
+        console.log(`${socket.id} registrat com ${platform}`);
+        socket.join(platform);
+    });
+
+    //Demana un vídeo
     socket.on('pedirVideo', () => {
         const video = videos[Math.floor(Math.random() * videos.length)];
         video.codigo = generarCodigo();
-        socket.emit('videoAsignado', { id: video.id, nombre_archivo: video.nombre_archivo, codigo: video.codigo, url: `/videos/${video.nombre_archivo}` });
+        video.permitido = false;
+
+        socket.emit('videoAsignado', {
+            id: video.id,
+            nombre_archivo: video.nombre_archivo,
+            codigo: video.codigo,
+            url: `/videos/${video.nombre_archivo}`
+        });
+
+        console.log(`Vídeo ${video.nombre_archivo} assignat amb codi ${video.codigo}`);
+    });
+
+    //Envia codi per validar
+    socket.on('validarCodigo', ({ id, codigo }) => {
+        const video = videos.find(v => v.id === Number(id));
+        if (!video) return socket.emit('validacion', { ok: false, mensaje: 'Video no encontrado' });
+
+        if (video.codigo === codigo) {
+            video.permitido = true;
+            // Avisar A1 que pot reproduir el vídeo
+            io.to('PC').emit('permisoVideo', { id: video.id });
+            socket.emit('validacion', { ok: true, mensaje: 'Codi correcte' });
+            console.log(`Codi correcte per vídeo ${video.nombre_archivo}`);
+        } else {
+            socket.emit('validacion', { ok: false, mensaje: 'Codi incorrecte' });
+            console.log(`Codi incorrecte intentat per vídeo ${video.nombre_archivo}`);
+        }
+    });
+
+    // Llista vídeos disponibles (per A2)
+    socket.on('llistaVideos', () => {
+        const lista = videos.map(v => v.nombre_archivo);
+        socket.emit('videos', lista);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Client desconnectat:', socket.id);
     });
 });
 
@@ -46,38 +89,10 @@ app.post('/validarCodigo', (req, res) => {
     if (!video) return res.status(404).json({ ok: false, mensaje: 'Video no encontrado' });
 
     if (video.codigo === codigo) {
-        return res.json({ ok: true, mensaje: 'Codi correcto, reproduccion permitida' });
+        video.permitido = true
+        return res.json({ ok: true, mensaje: 'Codigo correcto, reproduccion permitida' });
     } else {
         return res.json({ ok: false, mensaje: 'Codigo incorrecto' });
     }
 });
 
-io.on('connection', (socket) => {
-    console.log('Client connectat:', socket.id);
-
-    socket.on('registerPlatform', (platform) => {
-        console.log(` ${socket.id} registrado como ${platform}`);
-        socket.join(platform);
-    });
-
-    socket.on('llistaVideos', () => {
-        const videos = [
-            "Introducción a JavaScript",
-            "Cómo crear una API con Node.js y Express",
-            "Aprende SQL desde cero",
-            "Diseño de interfaces con Figma",
-            "Curso básico de React",
-            "Instalación y configuración de MongoDB",
-            "Tutorial de Git y GitHub para principiantes",
-            "Seguridad y cifrado en aplicaciones web",
-            "Cómo usar Docker para desarrollo web",
-            "Deploy de una app Angular en Vercel"
-        ];
-
-        socket.emit('videos', videos);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Client desconectat:', socket.id);
-    });
-});
