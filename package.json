@@ -1,15 +1,27 @@
 {
   "name": "projectesocketsservidorbackend",
   "version": "1.0.0",
-  "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "private": true,
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dage10/ProjecteSocketsServidorBackend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Dage10/ProjecteSocketsServidorBackend/issues"
+  },
+  "homepage": "https://github.com/Dage10/ProjecteSocketsServidorBackend#readme",
+  "description": ""
 }
