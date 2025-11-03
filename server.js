@@ -11,7 +11,6 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*' }
 });
-app.use('/videos', express.static(path.join(__dirname, 'videos')));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server listening on ${PORT}`));
@@ -20,6 +19,14 @@ const videos = [
     {id: 1, nombre_archivo:'video1.mp4', codigo: null,permitido:false},
     {id: 2, nombre_archivo: 'video2.mp4', codigo: null,permitido:false}
 ];
+
+app.get('/videos/:filename', (req, res) => {
+    const video = videos.find(v => v.nombre_archivo === req.params.filename);
+    if (!video) return res.status(404).send('Video no encontrado');
+    if (!video.permitido) return res.status(403).send('No permitido');
+
+    res.sendFile(path.join(__dirname, 'videos', video.nombre_archivo));
+});
 
 io.on('connection', (socket) => {
     console.log('Client connectat:', socket.id);
@@ -54,7 +61,7 @@ io.on('connection', (socket) => {
         if (video.codigo === codigo) {
             video.permitido = true;
             // Avisar A1 que pot reproduir el vídeo
-            io.to('PC').emit('permisoVideo', { id: video.id });
+            io.to('PC').emit('permisoVideo', { id: video.id, nombre_archivo: video.nombre_archivo });
             socket.emit('validacion', { ok: true, mensaje: 'Codi correcte' });
             console.log(`Codi correcte per vídeo ${video.nombre_archivo}`);
         } else {
@@ -90,6 +97,10 @@ app.post('/validarCodigo', (req, res) => {
 
     if (video.codigo === codigo) {
         video.permitido = true
+        io.to('PC').emit('permisoVideo', {
+            id: video.id,
+            nombre_archivo: video.nombre_archivo
+        });
         return res.json({ ok: true, mensaje: 'Codigo correcto, reproduccion permitida' });
     } else {
         return res.json({ ok: false, mensaje: 'Codigo incorrecto' });
