@@ -38,8 +38,12 @@ io.on('connection', (socket) => {
     });
 
     //Demana un vídeo
-    socket.on('pedirVideo', () => {
-        const video = videos[Math.floor(Math.random() * videos.length)];
+    socket.on('pedirVideo', ({ nombre_archivo }) => {
+        const video = videos.find(v => v.nombre_archivo === nombre_archivo);
+        if (!video) {
+            socket.emit('videoAsignado', { error: 'Video no encontrado' });
+            return;
+        }
         video.codigo = generarCodigo();
         video.permitido = false;
 
