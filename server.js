@@ -54,13 +54,12 @@ io.on('connection', (socket) => {
     });
 
     //Envia codi per validar
-    socket.on('validarCodigo', ({ id, codigo }) => {
-        const video = videos.find(v => v.id === Number(id));
+    socket.on('validarCodigo', ({codigo}) => {
+        const video = videos.find(v => v.codigo === codigo);
         if (!video) return socket.emit('validacion', { ok: false, mensaje: 'Video no encontrado' });
 
         if (video.codigo === codigo) {
             video.permitido = true;
-            // Avisar A1 que pot reproduir el vídeo
             io.to('PC').emit('permisoVideo', { id: video.id, nombre_archivo: video.nombre_archivo });
             socket.emit('validacion', { ok: true, mensaje: 'Codi correcte' });
             console.log(`Codi correcte per vídeo ${video.nombre_archivo}`);
@@ -89,23 +88,3 @@ function generarCodigo() {
     }
     return codigo;
 }
-
-app.post('/validarCodigo', (req, res) => {
-    const {codigo} = req.body;
-    const video = videos.find(v => v.codigo === codigo);
-    if (!video) {
-        return res.status(404).json({ok: false, mensaje: 'Video no encontrado'});
-    }
-
-    if (video.codigo === codigo) {
-        video.permitido = true
-        io.to('PC').emit('permisoVideo', {
-            id: video.id,
-            nombre_archivo: video.nombre_archivo
-        });
-        return res.json({ ok: true, mensaje: 'Codigo correcto, reproduccion permitida' });
-    } else {
-        return res.json({ ok: false, mensaje: 'Codigo incorrecto' });
-    }
-});
-
