@@ -91,9 +91,11 @@ function generarCodigo() {
 }
 
 app.post('/validarCodigo', (req, res) => {
-    const { id, codigo } = req.body;
-    const video = videos.find(v => v.id === id);
-    if (!video) return res.status(404).json({ ok: false, mensaje: 'Video no encontrado' });
+    const {codigo} = req.body;
+    const video = videos.find(v => v.codigo === codigo);
+    if (!video) {
+        return res.status(404).json({ok: false, mensaje: 'Video no encontrado'});
+    }
 
     if (video.codigo === codigo) {
         video.permitido = true
