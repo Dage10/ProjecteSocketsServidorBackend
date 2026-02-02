@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const pool = require('./db');
+const verificarPassword = require('./verificarPassword');
 
 const app = express();
 app.use(cors());
@@ -27,6 +30,24 @@ app.get('/videos/:filename', (req, res) => {
 
     res.sendFile(path.join(__dirname, 'videos', video.nombre_archivo));
 });
+
+const JWT_SECRET = 'streamvi_super_secret';
+
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+        return next(new Error('No token'));
+    }
+
+    try {
+        socket.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        next(new Error('Token invàlid'));
+    }
+});
+
 
 io.on('connection', (socket) => {
     console.log('Client connectat:', socket.id);
@@ -83,6 +104,61 @@ io.on('connection', (socket) => {
         console.log('Client desconnectat:', socket.id);
     });
 });
+
+app.post('/login', async (req, res) => {
+    const { usuari, contrasenya } = req.body;
+
+    if (!usuari || !contrasenya) {
+        return res.status(400).json({ error: 'Falten credencials' });
+    }
+
+    try {
+        const [rows] = await pool.query(
+            'SELECT USUARI, ROL, HASH, SALT FROM usuaris WHERE USUARI = ?',
+            [usuari]
+        );
+
+        if (rows.length === 0) {
+            return res.status(401).json({ error: 'Usuari incorrecte' });
+        }
+
+        const { USUARI, ROL, HASH, SALT } = rows[0];
+
+
+        const passwordCorrecte = verificarPassword(
+            contrasenya,
+            SALT,
+            HASH
+        );
+
+        if (!passwordCorrecte) {
+            return res.status(401).json({ error: 'Contrasenya incorrecta' });
+        }
+
+        const JWT_SECRET = 'streamvi_super_secret';
+
+        const token = jwt.sign(
+            {
+                usuari: USUARI,
+                rol: ROL
+            },
+            JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        console.log(`Login correcte | Usuari: ${USUARI} | Rol: ${ROL}`);
+
+        res.json({
+            message: 'Login correcte',
+            token
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al fer login' });
+    }
+});
+
 
 function generarCodigo() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
