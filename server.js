@@ -18,15 +18,25 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server listening on ${PORT}`));
 
+const usuariTipus = {
+    FREE: 'user',
+    PREMIUM: 'premium_user',
+    ADMIN: 'admin'
+}
+
 const videos = [
-    {id: 1, nombre_archivo:'video1.mp4', codigo: null,permitido:false},
-    {id: 2, nombre_archivo: 'video2.mp4', codigo: null,permitido:false}
+    {id: 1, nombre_archivo:'video1.mp4', codigo: null,permitido:false,rol: usuariTipus.FREE},
+    {id: 2, nombre_archivo: 'video2.mp4', codigo: null,permitido:false,rol: usuariTipus.PREMIUM}
 ];
 
-app.get('/videos/:filename', (req, res) => {
+app.get('/videos/:filename',verificarToken, (req, res) => {
     const video = videos.find(v => v.nombre_archivo === req.params.filename);
     if (!video) return res.status(404).send('Video no encontrado');
     if (!video.permitido) return res.status(403).send('No permitido');
+
+    if (video.rol === usuariTipus.PREMIUM && req.user.rol !== usuariTipus.PREMIUM && req.user.rol !== usuariTipus.ADMIN) {
+        return res.status(403).send('Només per a usuaris premium');
+    }
 
     res.sendFile(path.join(__dirname, 'videos', video.nombre_archivo));
 });
@@ -50,6 +60,10 @@ io.use((socket, next) => {
 
 
 io.on('connection', (socket) => {
+    if (!socket.user) {
+        socket.disconnect();
+        return;
+    }
     console.log('Client connectat:', socket.id);
 
     // Registrar plataforma
@@ -65,6 +79,16 @@ io.on('connection', (socket) => {
             socket.emit('videoAsignado', { error: 'Video no encontrado' });
             return;
         }
+
+        if (
+            video.rol === usuariTipus.PREMIUM &&
+            socket.user.rol !== usuariTipus.PREMIUM &&
+            socket.user.rol !== usuariTipus.ADMIN
+        ) {
+            return socket.emit('videoAsignado', { error: 'Només per a usuaris premium' });
+        }
+
+
         video.codigo = generarCodigo();
         video.permitido = false;
 
@@ -74,6 +98,8 @@ io.on('connection', (socket) => {
             codigo: video.codigo,
             url: `/videos/${video.nombre_archivo}`
         });
+
+        console.log(socket.url)
 
         console.log(`Vídeo ${video.nombre_archivo} assignat amb codi ${video.codigo}`);
     });
@@ -96,7 +122,10 @@ io.on('connection', (socket) => {
 
     // Llista vídeos disponibles (per A2)
     socket.on('llistaVideos', () => {
-        const lista = videos.map(v => v.nombre_archivo);
+        const lista = videos.map(video => ({
+            nombre_archivo: video.nombre_archivo,
+            rol: video.rol
+        }));
         socket.emit('videos', lista);
     });
 
@@ -150,7 +179,8 @@ app.post('/login', async (req, res) => {
 
         res.json({
             message: 'Login correcte',
-            token
+            token,
+            rol: ROL
         });
 
     } catch (error) {
@@ -168,3 +198,20 @@ function generarCodigo() {
     }
     return codigo;
 }
+
+function verificarToken(req, res, next) {
+    let token = req.headers.authorization?.split(' ')[1];
+    if (!token && req.query.token) token = req.query.token;
+
+    if (!token) {
+        return res.status(401).json({ error: 'Token requerit' });
+    }
+
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Token invalid o caducat' });
+    }
+}
+
