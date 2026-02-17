@@ -6,6 +6,25 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const pool = require('./db');
 const verificarPassword = require('./verificarPassword');
+const os = require('os');
+const ftp = require('basic-ftp');
+const { exec } = require('child_process');
+
+const FTP_CONFIG = {
+    host: 'ftpupload.net',
+    user: 'if0_40994469',
+    password: 'hWnt5Gf6jXqTlP',
+    secure: false
+};
+
+const usuarisAmbLoginsErronis = []
+
+const politicaLogin = {
+    maxIntents: 5,
+    tempsMinim: 5,
+    tempsMaxim: 2 * 60,
+    tempsDeBloqueig: 15 * 60
+};
 
 const app = express();
 app.use(cors());
@@ -161,6 +180,32 @@ app.post('/login', async (req, res) => {
         );
 
         if (!passwordCorrecte) {
+            const now = Date.now();
+            let registre = usuarisAmbLoginsErronis.find(f => f.usuari === usuari);
+
+            if (!registre) {
+                registre = { usuari, intents: 0, ultimIntent: now };
+                usuarisAmbLoginsErronis.push(registre);
+            }
+
+            const tempsPassat = (now - registre.ultimIntent) / 1000;
+            const estaBloquejat = registre.intents >= politicaLogin.maxIntents;
+
+            if (estaBloquejat) {
+                if (tempsPassat < politicaLogin.tempsDeBloqueig) {
+                    const falta = Math.ceil(politicaLogin.tempsDeBloqueig - tempsPassat);
+                    return res.status(403).json({ error: `Compte bloquejat. Torna-ho a provar en ${falta} segons.` });
+                }
+                registre.intents = 0;
+            } else if (tempsPassat > politicaLogin.tempsMaxim) {
+                registre.intents = 0;
+            } else if (tempsPassat < politicaLogin.tempsMinim) {
+                registre.intents += 1;
+            }
+
+            registre.intents += 1;
+            registre.ultimIntent = now;
+
             return res.status(401).json({ error: 'Contrasenya incorrecta' });
         }
 
@@ -189,7 +234,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-
 function generarCodigo() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let codigo = '';
@@ -215,3 +259,65 @@ function verificarToken(req, res, next) {
     }
 }
 
+function soloAdmin(req, res, next) {
+    let token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) return res.status(401).json({ error: 'Token requerit' });
+
+    try {
+        const user = jwt.verify(token, JWT_SECRET);
+        if (user.rol !== 'admin') return res.status(403).json({ error: 'Nomes admins' });
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Token invalid' });
+    }
+}
+
+app.get('/admin/stats', soloAdmin, async (req, res) => {
+    const ram = os.totalmem();
+    const free = os.freemem();
+    const cpus = os.cpus();
+    const cpuUsage = cpus.map(cpu => {
+        const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+        return Math.round((1 - cpu.times.idle / total) * 100) + '%';
+    });
+
+    res.json({
+        ram_used: Math.round((ram - free) / 1024 / 1024) + 'MB',
+        ram_total: Math.round(ram / 1024 / 1024) + 'MB',
+        cpu: cpuUsage,
+        uptime: Math.floor(os.uptime()) + 's'
+    });
+});
+
+app.get('/admin/ftp/files', soloAdmin, async (req, res) => {
+    const client = new ftp.Client();
+    try {
+        await client.access(FTP_CONFIG);
+        const list = await client.list('/htdocs/problems');
+
+        const fitxers = [];
+        for (const file of list) {
+            let contingut = '';
+            try {
+                const chunks = [];
+
+                await client.downloadTo(
+                    new (require('stream').Writable)({
+                        write(chunk, _, cb) { chunks.push(chunk); cb(); }
+                    }),
+                    `/htdocs/problems/${file.name}`
+                );
+                contingut = Buffer.concat(chunks).toString('utf8');
+            } catch {
+                contingut = 'arxiu vuit';
+            }
+            fitxers.push({ name: file.name, size: file.size, contingut });
+        }
+        res.json(fitxers);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.close();
+    }
+});
