@@ -1,3 +1,4 @@
+const {rateLimit} = require('express-rate-limit')
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -134,7 +135,19 @@ io.on('connection', (socket) => {
     });
 });
 
-app.post('/login', async (req, res) => {
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    message: { error: 'Massa intents de login. Espera uns minuts.' },
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (req) => req.body?.usuari || "unknown"
+});
+
+
+
+
+app.post('/login',loginLimiter, async (req, res) => {
     const { usuari, contrasenya } = req.body;
 
     if (!usuari || !contrasenya) {
